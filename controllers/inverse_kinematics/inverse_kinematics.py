@@ -1,107 +1,120 @@
-# Copyright 1996-2021 Cyberbotics Ltd.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Demonstration of inverse kinematics using the "ikpy" Python module."""
-
-import sys
 import tempfile
-import ikpy
-from ikpy.chain import Chain
-import math
+
 from controller import Supervisor
+from ikpy.chain import Chain
+import numpy as np
 
-IKPY_MAX_ITERATIONS = 4
 
-# Initialize the Webots Supervisor.
-supervisor = Supervisor()
-timeStep = int(4 * supervisor.getBasicTimeStep())
+class SetPoint:
 
-# Create the arm chain from the URDF
-filename = None
-with tempfile.NamedTemporaryFile(suffix='.urdf', delete=False) as file:
-    filename = file.name
-    file.write(supervisor.getUrdf().encode('utf-8'))
-armChain = Chain.from_urdf_file(filename)
-for i in [0, 6]:
-    armChain.active_links_mask[i] = False
+    def __init__(self, position, duration) -> None:
+        self.position = position
+        self.duration = duration
 
-# Initialize the arm motors and encoders.
-motors = []
-for link in armChain.links:
-    if 'motor' in link.name:
-        motor = supervisor.getDevice(link.name)
-        motor.setVelocity(1.0)
-        position_sensor = motor.getPositionSensor()
-        position_sensor.enable(timeStep)
-        motors.append(motor)
 
-# Get the arm and target nodes.
-target = supervisor.getFromDef('TARGET')
-arm = supervisor.getSelf()
+class LinearInterpolator:
 
-# Loop 1: Draw a circle on the paper sheet.
-print('Draw a circle on the paper sheet...')
-while supervisor.step(timeStep) != -1:
-    t = supervisor.getTime()
+    def __init__(self, start_time, duration, start_angles, end_angles) -> None:
+        self.start_time = start_time
+        self.duration = duration
+        self.start_angles = start_angles
+        self.end_angles = end_angles
 
-    # Use the circle equation relatively to the arm base as an input of the IK algorithm.
-    x = 0.25 * math.cos(t) + 1.1
-    y = 0.25 * math.sin(t) - 0.95
-    z = 0.05
+    def interpolate_joint_angles(self, current_time: float) -> np.array:
+        if current_time < self.start_time + self.duration:
+            return (self.start_time + self.duration -
+                    current_time) / self.duration * self.start_angles + (
+                        current_time -
+                        self.start_time) / self.duration * self.end_angles
+        else:
+            return self.end_angles
 
-    # Call "ikpy" to compute the inverse kinematics of the arm.
-    initial_position = [0] + [m.getPositionSensor().getValue() for m in motors] + [0]
-    ikResults = armChain.inverse_kinematics([x, y, z], max_iter=IKPY_MAX_ITERATIONS, initial_position=initial_position)
+    def is_finished(self, current_time):
+        return current_time > self.start_time + self.duration
 
-    # Actuate the 3 first arm motors with the IK results.
-    for i in range(3):
-        motors[i].setPosition(ikResults[i + 1])
-    # Keep the hand orientation down.
-    motors[4].setPosition(-ikResults[2] - ikResults[3] + math.pi / 2)
-    # Keep the hand orientation perpendicular.
-    motors[5].setPosition(ikResults[1])
 
-    # Conditions to start/stop drawing and leave this loop.
-    if supervisor.getTime() > 2 * math.pi + 1.5:
-        break
-    elif supervisor.getTime() > 1.5:
-        # Note: start to draw at 1.5 second to be sure the arm is well located.
-        supervisor.getDevice('pen').write(True)
+class RoboticArm:
 
-# Loop 2: Move the arm hand to the target.
-print('Move the yellow and black sphere to move the arm...')
-while supervisor.step(timeStep) != -1:
-    # Get the absolute postion of the target and the arm base.
-    targetPosition = target.getPosition()
-    armPosition = arm.getPosition()
+    def __init__(self, supervisor, time_step) -> None:
+        filename = None
+        with tempfile.NamedTemporaryFile(suffix='.urdf', delete=False) as file:
+            filename = file.name
+            file.write(supervisor.getUrdf().encode('utf-8'))
+        self.arm_chain = Chain.from_urdf_file(filename)
+        for i in [0, 6]:
+            self.arm_chain.active_links_mask[i] = False
 
-    # Compute the position of the target relatively to the arm.
-    # x and y axis are inverted because the arm is not aligned with the Webots global axes.
-    x = targetPosition[0] - armPosition[0]
-    y = - (targetPosition[2] - armPosition[2])
-    z = targetPosition[1] - armPosition[1]
+        self.motors = []
+        for link in self.arm_chain.links:
+            if 'motor' in link.name:
+                motor = supervisor.getDevice(link.name)
+                motor.setVelocity(1.0)
+                position_sensor = motor.getPositionSensor()
+                position_sensor.enable(time_step)
+                self.motors.append(motor)
+        self.INVERSE_KINEMATICS_MAX_ITERATIONS = 4
+        self.arm_base = supervisor.getSelf()
+        self.initial_joint_angles = self.get_joint_angles()
 
-    # Call "ikpy" to compute the inverse kinematics of the arm.
-    initial_position = [0] + [m.getPositionSensor().getValue() for m in motors] + [0]
-    ikResults = armChain.inverse_kinematics([x, y, z], max_iter=IKPY_MAX_ITERATIONS, initial_position=initial_position)
+    def get_joint_angles(self) -> np.array:
+        return np.array(
+            [0] + [m.getPositionSensor().getValue()
+                   for m in self.motors] + [0])
 
-    # Recalculate the inverse kinematics of the arm if necessary.
-    position = armChain.forward_kinematics(ikResults)
-    squared_distance = (position[0, 3] - x)**2 + (position[1, 3] - y)**2 + (position[2, 3] - z)**2
-    if math.sqrt(squared_distance) > 0.03:
-        ikResults = armChain.inverse_kinematics([x, y, z])
+    def set_joint_angles(self, joint_angles: np.array):
+        for i in range(len(self.motors)):
+            # Why i+1 ?
+            self.motors[i].setPosition(joint_angles[i + 1])
 
-    # Actuate the arm motors with the IK results.
-    for i in range(len(motors)):
-        motors[i].setPosition(ikResults[i + 1])
+    def follow_trajectory(self, trajectory: list[SetPoint], current_time):
+        INVERSE_KINEMATICS_MAX_ITERATIONS = 4
+
+        target_joint_angles = self.arm_chain.inverse_kinematics(
+            trajectory[0].position,
+            max_iter=INVERSE_KINEMATICS_MAX_ITERATIONS,
+            initial_position=self.get_joint_angles())
+        interpolator = LinearInterpolator(0.0, trajectory[0].duration,
+                                          self.starting_position,
+                                          target_joint_angles)
+        joint_angles = interpolator.interpolate_joint_angles(current_time)
+        self.set_joint_angles(joint_angles)
+
+    def get_joint_angle_interpolator(self, starting_time, set_point: SetPoint):
+        target_joint_angles = self.arm_chain.inverse_kinematics(
+            set_point.position,
+            max_iter=self.INVERSE_KINEMATICS_MAX_ITERATIONS,
+            initial_position=self.get_joint_angles())
+        return LinearInterpolator(starting_time, set_point.duration,
+                                          self.get_joint_angles(),
+                                          target_joint_angles)
+
+
+def main():
+    supervisor = Supervisor()
+    time_step = int(4 * supervisor.getBasicTimeStep())
+
+    robotic_arm = RoboticArm(supervisor, time_step)
+    trajectory = [
+        SetPoint(np.array([1.65, -0.5, 1.76]), 10.0),
+        SetPoint(np.array([1.65, 1.0, 1.76]), 10.0),
+        SetPoint(np.array([1.65, -1.0, 1.76]), 10.0)
+    ]
+    current_time = 0.0
+    for set_point in trajectory:
+        interpolator = robotic_arm.get_joint_angle_interpolator(
+            current_time, set_point)
+        while supervisor.step(time_step) != -1:
+            current_time += time_step / 1000.0
+            if not interpolator.is_finished(current_time):
+                joint_angles = interpolator.interpolate_joint_angles(current_time)
+            else:
+                break
+            robotic_arm.set_joint_angles(joint_angles)
+# TODO:
+# - [ ] move the robotic arm in its own world
+# - [ ] add the moving platform using a sliding joint
+# - [ ] implement the synchronization algorithm
+# - [ ] visualize the trajectory (optional)
+
+if __name__ == "__main__":
+    main()
