@@ -102,12 +102,14 @@ def main():
     time_step = 32
     robot = Supervisor()
     motor = robot.getDevice('sliding_joint')
+    motor.setVelocity(1.0)
+
     t = 0.0
 
-    while robot.step(time_step) != -1:
-        position = 10 * t
-        motor.setPosition(position)
-        t += time_step / 1000.0
+    # while robot.step(time_step) != -1:
+    #     position = 10 * t
+    #     motor.setPosition(position)
+    #     t += time_step / 1000.0
     # current_time = 0.0
     # for set_point in trajectory:
     #     interpolator = robotic_arm.get_joint_angle_interpolator(

@@ -32,7 +32,7 @@ Floor {
   appearance ThreadMetalPlate {
   }
 }
-moving_platform {
+DEF MOVING_PLATFORM moving_platform {
   translation 2 0 0
   rotation 1 0 0 4.712388966
 }

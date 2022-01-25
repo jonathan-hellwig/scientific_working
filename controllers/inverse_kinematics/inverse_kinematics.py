@@ -92,6 +92,9 @@ class RoboticArm:
 
 def main():
     supervisor = Supervisor()
+    platform = supervisor.getFromDef("MOVING_PLATFORM")
+    translation = platform.getField('translation')
+    print(platform)
     time_step = int(4 * supervisor.getBasicTimeStep())
 
     robotic_arm = RoboticArm(supervisor, time_step)
@@ -100,6 +103,10 @@ def main():
         SetPoint(np.array([1.65, 1.0, 1.76]), 10.0),
         SetPoint(np.array([1.65, -1.0, 1.76]), 10.0)
     ]
+    current_time = 0.0
+    while supervisor.step(time_step) != -1:
+        current_time += time_step / 1000.0
+        translation.setSFVec3f([2.0, 0.1, np.sin(current_time)])
     # current_time = 0.0
     # for set_point in trajectory:
     #     interpolator = robotic_arm.get_joint_angle_interpolator(
