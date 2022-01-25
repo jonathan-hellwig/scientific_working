@@ -10,7 +10,7 @@ PROTO Irb4600-40 [
   field SFVec3f    translation     0 0 0                 # Is `Transform.translation`.
   field SFRotation rotation        0 1 0 0               # Is `Transform.rotation`.
   field SFString   name            "IRB 4600/40"         # Is `Solid.name`.
-  field SFString   controller      "inverse_kinematics"  # Is `Robot.controller`.
+  field SFString   controller      "printing_system"  # Is `Robot.controller`.
   field MFString   controllerArgs  []                    # Is `Robot.controllerArgs`.
   field SFString   customData      ""                    # Is `Robot.customData`.
   field SFBool     supervisor      FALSE                 # Is `Robot.supervisor`.

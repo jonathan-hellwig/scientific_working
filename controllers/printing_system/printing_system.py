@@ -86,46 +86,43 @@ class RoboticArm:
             # This might be dangerous in the first step
             initial_position=self.get_joint_angles())
         return LinearInterpolator(starting_time, set_point.duration,
-                                  self.get_joint_angles(), target_joint_angles)
+                                          self.get_joint_angles(),
+                                          target_joint_angles)
 
 
 def main():
-    # supervisor = Supervisor()
-    # time_step = int(4 * supervisor.getBasicTimeStep())
+    supervisor = Supervisor()
+    platform = supervisor.getFromDef("MOVING_PLATFORM")
+    translation = platform.getField('translation')
+    print(platform)
+    time_step = int(4 * supervisor.getBasicTimeStep())
 
-    # robotic_arm = RoboticArm(supervisor, time_step)
-    # trajectory = [
-    #     SetPoint(np.array([1.65, -0.5, 1.76]), 10.0),
-    #     SetPoint(np.array([1.65, 1.0, 1.76]), 10.0),
-    #     SetPoint(np.array([1.65, -1.0, 1.76]), 10.0)
-    # ]
-    time_step = 32
-    robot = Supervisor()
-    motor = robot.getDevice('sliding_joint')
-    motor.setVelocity(1.0)
-
-    t = 0.0
-
-    # while robot.step(time_step) != -1:
-    #     position = 10 * t
-    #     motor.setPosition(position)
-    #     t += time_step / 1000.0
-    # current_time = 0.0
-    # for set_point in trajectory:
-    #     interpolator = robotic_arm.get_joint_angle_interpolator(
-    #         current_time, set_point)
-    #     while supervisor.step(time_step) != -1:
-    #         current_time += time_step / 1000.0
-    #         if not interpolator.is_finished(current_time):
-    #             joint_angles = interpolator.interpolate_joint_angles(current_time)
-    #         else:
-    #             break
-    #         robotic_arm.set_joint_angles(joint_angles)
+    robotic_arm = RoboticArm(supervisor, time_step)
+    trajectory = [
+        SetPoint(np.array([1.65, -0.5, 1.76]), 10.0),
+        SetPoint(np.array([1.65, 1.0, 1.76]), 10.0),
+        SetPoint(np.array([1.65, -1.0, 1.76]), 10.0)
+    ]
+    current_time = 0.0
+    while supervisor.step(time_step) != -1:
+        current_time += time_step / 1000.0
+        translation.setSFVec3f([2.0, 0.1, np.sin(current_time)])
+    current_time = 0.0
+    for set_point in trajectory:
+        interpolator = robotic_arm.get_joint_angle_interpolator(
+            current_time, set_point)
+        while supervisor.step(time_step) != -1:
+            current_time += time_step / 1000.0
+            if not interpolator.is_finished(current_time):
+                joint_angles = interpolator.interpolate_joint_angles(current_time)
+            else:
+                break
+            robotic_arm.set_joint_angles(joint_angles)
 
 
 # TODO:
 # - [X] move the robotic arm in its own world
-# - [ ] add the moving platform using a sliding joint
+# - [X] add the moving platform using a sliding joint
 # - [ ] implement the synchronization algorithm
 # - [ ] visualize the trajectory (optional)
 
