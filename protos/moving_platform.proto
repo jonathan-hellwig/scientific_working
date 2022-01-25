@@ -1,0 +1,96 @@
+PROTO moving_platform [
+  field SFVec3f    translation     0 0 0                 # Is `Transform.translation`.
+  field SFRotation rotation        0 1 0 0               # Is `Transform.rotation`.
+  field SFString   name            "Moving platform"         # Is `Solid.name`.
+  field SFString   controller      "platform_controller"
+]
+{
+  Robot {
+    translation IS translation
+    rotation IS rotation 
+    name IS name
+  children [
+    DEF BODY Shape {
+      appearance PBRAppearance {
+        baseColor 0.3 0.3 0.3
+        roughness 1
+        metalness 0
+      }
+      geometry Box {
+        size 2.0 10.0 0.05
+      }
+    }
+    DEF RAIL SliderJoint {
+      jointParameters JointParameters {
+        axis 0 1 0
+      }
+      device [
+        LinearMotor {
+          name "sliding_joint"
+          minPosition -1.0
+          maxPosition 1.0
+        }
+      ]
+      endPoint Solid {
+        translation 0 0 0.20
+        rotation 0 0 0 0
+        children [
+          DEF PLATFORM Shape {
+            appearance PBRAppearance {
+              baseColor 0.5 0.5 0.5
+              roughness 1
+              metalness 0.5
+            }
+            geometry Box {
+              size 2.0 3.0 0.05
+            }
+          }
+        ]
+        boundingObject USE PLATFORM
+        physics Physics {
+        }
+      }
+    }
+    DEF DS_RIGHT DistanceSensor {
+      translation 0.1 -0.03 0
+      rotation 0 0 1 -0.3
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.184314 0.596078 0.847059
+            roughness 1
+            metalness 0
+          }
+          geometry Box {
+            size 0.01 0.01 0.01
+          }
+        }
+      ]
+      name "ds_right"
+    }
+    DEF DS_LEFT DistanceSensor {
+      translation 0.1 0.03 0
+      rotation 0 0 1 0.3
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.184314 0.596078 0.847059
+            roughness 1
+            metalness 0
+          }
+          geometry Box {
+            size 0.01 0.01 0.01
+          }
+        }
+      ]
+      name "ds_left"
+    }
+  ]
+  boundingObject USE BODY
+  physics Physics {
+    density -1
+    mass 5
+  }
+  controller IS controller
+  }
+}

@@ -86,20 +86,28 @@ class RoboticArm:
             # This might be dangerous in the first step
             initial_position=self.get_joint_angles())
         return LinearInterpolator(starting_time, set_point.duration,
-                                          self.get_joint_angles(),
-                                          target_joint_angles)
+                                  self.get_joint_angles(), target_joint_angles)
 
 
 def main():
-    supervisor = Supervisor()
-    time_step = int(4 * supervisor.getBasicTimeStep())
+    # supervisor = Supervisor()
+    # time_step = int(4 * supervisor.getBasicTimeStep())
 
-    robotic_arm = RoboticArm(supervisor, time_step)
-    trajectory = [
-        SetPoint(np.array([1.65, -0.5, 1.76]), 10.0),
-        SetPoint(np.array([1.65, 1.0, 1.76]), 10.0),
-        SetPoint(np.array([1.65, -1.0, 1.76]), 10.0)
-    ]
+    # robotic_arm = RoboticArm(supervisor, time_step)
+    # trajectory = [
+    #     SetPoint(np.array([1.65, -0.5, 1.76]), 10.0),
+    #     SetPoint(np.array([1.65, 1.0, 1.76]), 10.0),
+    #     SetPoint(np.array([1.65, -1.0, 1.76]), 10.0)
+    # ]
+    time_step = 32
+    robot = Supervisor()
+    motor = robot.getDevice('sliding_joint')
+    t = 0.0
+
+    while robot.step(time_step) != -1:
+        position = 10 * t
+        motor.setPosition(position)
+        t += time_step / 1000.0
     # current_time = 0.0
     # for set_point in trajectory:
     #     interpolator = robotic_arm.get_joint_angle_interpolator(
@@ -111,6 +119,8 @@ def main():
     #         else:
     #             break
     #         robotic_arm.set_joint_angles(joint_angles)
+
+
 # TODO:
 # - [X] move the robotic arm in its own world
 # - [ ] add the moving platform using a sliding joint

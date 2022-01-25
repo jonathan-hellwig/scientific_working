@@ -1,0 +1,85 @@
+#VRML_SIM R2022a utf8
+WorldInfo {
+  basicTimeStep 16
+  coordinateSystem "NUE"
+}
+Viewpoint {
+  fieldOfView 0.85
+  orientation -0.022992759343597947 0.7066191485983763 0.7072204124966086 3.215821803960053
+  position 10.390243313435965 1.7181331975227296 -0.0005379899068402305
+  follow "robot:IRB 4600/40:solid:solid:solid:solid:solid:solid:pen"
+  followType "Pan and Tilt Shot"
+}
+TexturedBackground {
+  texture "empty_office"
+}
+PointLight {
+  attenuation 0 0 1
+  intensity 10
+  location -4 6 5
+  castShadows TRUE
+}
+PointLight {
+  attenuation 0 0 1
+  intensity 10
+  location 5 6 5
+}
+Floor {
+  rotation -0.5773502691896258 0.5773502691896258 0.5773502691896258 2.0943951023931953
+  name "floor(1)"
+  size 20 16.4
+  tileSize 1 1
+  appearance ThreadMetalPlate {
+  }
+}
+moving_platform {
+  translation 2 0 0
+  rotation 1 0 0 4.712388966
+}
+Irb4600-40 {
+  rotation 1 0 0 4.712388966
+  supervisor TRUE
+  handSlot [
+    Pen {
+      translation 0 0 0.02
+      rotation 1 0 0 1.5707926535755434
+      children [
+        Transform {
+          translation 0 -0.05 6.123233995736766e-18
+          rotation 1 0 0 0
+          children [
+            Shape {
+              appearance BrushedAluminium {
+                colorOverride 0 0.4131074998092622 0.9919279774166476
+              }
+              geometry Cylinder {
+                height 0.05
+                radius 0.04
+                subdivision 24
+              }
+            }
+          ]
+        }
+        Transform {
+          translation 0 -0.04 4.898587196589413e-18
+          rotation 1 0 0 0
+          children [
+            Shape {
+              appearance BrushedAluminium {
+                colorOverride 0 0 0
+              }
+              geometry Cylinder {
+                height 0.07
+                radius 0.01
+                subdivision 12
+              }
+            }
+          ]
+        }
+      ]
+      leadSize 0.01
+      maxDistance 0.05
+    }
+  ]
+  staticBase TRUE
+}
