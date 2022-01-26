@@ -1,3 +1,4 @@
+from sys import platform
 import numpy as np
 import unittest
 
@@ -43,7 +44,7 @@ def project_to_working_envelope(first_point, second_point, working_radius):
 
 
 def calculate_printing_system_set_point(first_position, second_position,
-                                        speed):
+                                        speed, working_radius):
     robotic_arm_target_position = np.array(
         [second_position[0], 0.0, second_position[2]])
     robotic_arm_speed = speed * (second_position[0] - first_position[0]
@@ -55,7 +56,10 @@ def calculate_printing_system_set_point(first_position, second_position,
                                      ) / np.linalg.norm(second_position[:2] -
                                                         first_position[:2])
 
-    return robotic_arm_target_position, robotic_arm_speed, moving_platform_displacement, moving_platform_speed
+    return PrinitingSystemSetPoint(robotic_arm_target_position,
+                                   robotic_arm_speed,
+                                   moving_platform_displacement,
+                                   moving_platform_speed)
 
 
 class Toolpath:
@@ -66,24 +70,49 @@ class Toolpath:
     @classmethod
     def from_g_code_commands(cls, g_code_commands: list[GCodeCommand],
                              working_radius: float):
-        # Assume for now that the set points are really close
+        platform_is_moving = False
         trajectory = []
         for i in range(1, len(g_code_commands)):
-            if g_code_commands[i].get_xy_radius() < working_radius:
-                trajectory.append(
-                    PrinitingSystemSetPoint(g_code_commands[i].position,
-                                            g_code_commands[i].speed, 0.0,
-                                            0.0))
-            else:
-                robotic_arm_target_position, robotic_arm_speed, moving_platform_displacement, moving_platform_speed = calculate_printing_system_set_point(
-                    g_code_commands[i - 1].position,
-                    g_code_commands[i].position, g_code_commands[i].speed)
+            if g_code_commands[i].get_xy_radius() <= working_radius:
+                if platform_is_moving:
+                    platform_is_moving = False
+                    projected_point = project_to_working_envelope(
+                        g_code_commands[i].position,
+                        g_code_commands[i - 1].position, working_radius)
+                    first_set_point = calculate_printing_system_set_point(
+                        g_code_commands[i - 1].position, projected_point,
+                        g_code_commands[i].speed)
+                    second_set_point = PrinitingSystemSetPoint(
+                        projected_point, g_code_commands[i].speed, 0.0, 0.0)
 
-                trajectory.append(
-                    PrinitingSystemSetPoint(robotic_arm_target_position,
-                                            robotic_arm_speed,
-                                            moving_platform_displacement,
-                                            moving_platform_speed))
+                    trajectory.append(first_set_point)
+                    trajectory.append(second_set_point)
+                else:
+                    trajectory.append(
+                        PrinitingSystemSetPoint(g_code_commands[i].position,
+                                                g_code_commands[i].speed, 0.0,
+                                                0.0))
+            else:
+                if not platform_is_moving:
+                    platform_is_moving = True
+                    projected_point = project_to_working_envelope(
+                        g_code_commands[i - 1].position,
+                        g_code_commands[i].position, working_radius)
+                    first_set_point = PrinitingSystemSetPoint(
+                        projected_point, g_code_commands[i].speed, 0.0, 0.0)
+                    second_set_point = calculate_printing_system_set_point(
+                        projected_point, g_code_commands[i].position,
+                        g_code_commands[i].speed)
+
+                    trajectory.append(first_set_point)
+                    trajectory.append(second_set_point)
+                else:
+                    set_point = calculate_printing_system_set_point(
+                        g_code_commands[i - 1].position,
+                        g_code_commands[i].position, g_code_commands[i].speed)
+
+                    trajectory.append(set_point)
+
         return cls(trajectory)
 
     def __getitem__(self, index):
@@ -99,11 +128,14 @@ class TestToolpath(unittest.TestCase):
             GCodeCommand(np.array([0.0, 1.0, 0.0]), 2.0),
             GCodeCommand(np.array([0.0, 2.0, 0.0]), 3.0),
             GCodeCommand(np.array([0.0, 3.0, 0.0]), 4.0),
-            GCodeCommand(np.array([0.0, 4.0, 0.0]), 5.0),
+            GCodeCommand(np.array([0.0, 3.5, 0.0]), 5.0),
             GCodeCommand(np.array([0.0, 5.0, 0.0]), 6.0),
+            GCodeCommand(np.array([0.0, 6.0, 0.0]), 7.0),
+            GCodeCommand(np.array([0.0, 3.0, 0.0]), 6.0),
         ]
 
-        toolpath = Toolpath.from_g_code_commands(g_code_commands, 5.0)
+        toolpath = Toolpath.from_g_code_commands(g_code_commands,
+                                                 working_radius)
         for set_point in toolpath:
             print(set_point)
 

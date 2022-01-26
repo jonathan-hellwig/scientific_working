@@ -196,6 +196,12 @@ def main():
 # TODO:
 # - [X] move the robotic arm in its own world
 # - [X] add the moving platform using a sliding joint
+# - [X] add the projection on the working envelope
+# - [ ] handle the case where the speed for the platform is 0.0
+# - [ ] handle the case where a set point is exactly on the working radius -> do not add a second set point
+# - [ ] normal movement until projected point!
+# - [ ] the robotic arm has to stay on the edge of the working envelope during movement of the platform!
+# - [ ] printing system set points still contain a duartion and not a speed
 # - [ ] keep track if the working radius is left and if so save it in a boolean variable
 # - [ ] swap the axis the paper 
 # - [ ] include orientation information
