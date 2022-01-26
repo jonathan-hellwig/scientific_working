@@ -3,6 +3,7 @@ import tempfile
 from controller import Supervisor
 from ikpy.chain import Chain
 import numpy as np
+from toolpath import Toolpath
 
 
 class GCodeCommand:
@@ -23,7 +24,7 @@ class LinearInterpolator:
         self.start_angles = start_angles
         self.end_angles = end_angles
 
-    def interpolate_joint_angles(self, current_time: float) -> np.array:
+    def __call__(self, current_time: float) -> np.array:
         if current_time < self.start_time + self.duration:
             return (self.start_time + self.duration -
                     current_time) / self.duration * self.start_angles + (
@@ -36,7 +37,7 @@ class LinearInterpolator:
         return current_time > self.start_time + self.duration
 
 
-class MovingPlatform:
+class Platform:
 
     def __init__(self, supervisor, time_step) -> None:
         self.supervisor = supervisor
@@ -55,6 +56,16 @@ class MovingPlatform:
             current_position = self.get_translation()
             self.translation_field.setSFVec3f(
                 [current_position[0], current_position[1], y_displacement])
+
+    def get_y_displacement(self):
+        return self.get_translation()[2]
+
+    def get_displacement_interpolator(self, starting_time: float,
+                                      target_displacement: np.array,
+                                      duration: float):
+        return LinearInterpolator(starting_time, duration,
+                                  self.get_y_displacement(),
+                                  target_displacement)
 
 
 class RoboticArm:
@@ -89,11 +100,11 @@ class RoboticArm:
         for i in range(len(self.motors)):
             self.motors[i].setPosition(joint_angles[i + 1])
 
-    def get_joint_angle_interpolator(self, starting_time,
+    def get_joint_angle_interpolator(self, starting_time: float,
                                      target_position: np.array,
                                      duration: float):
         target_joint_angles = self.arm_chain.inverse_kinematics(
-            target_position.position,
+            target_position,
             max_iter=self.INVERSE_KINEMATICS_MAX_ITERATIONS,
             # This might be dangerous in the first step
             initial_position=self.get_joint_angles())
@@ -101,112 +112,45 @@ class RoboticArm:
                                   self.get_joint_angles(), target_joint_angles)
 
 
-class PrinitingSystemSetPoint:
-
-    def __init__(self, robotic_arm_position: np.array,
-                 robotic_arm_duration: float,
-                 moving_platform_displacement: float,
-                 moving_platform_duration: float) -> None:
-        self.robotic_arm_position = robotic_arm_position
-        self.robotic_arm_duration = robotic_arm_duration
-        self.moving_platform_position = moving_platform_displacement
-        self.moving_platform_duration = moving_platform_duration
-
-
-class Toolpath:
-
-    def __init__(self, trajectory) -> None:
-        self.trajectory = trajectory
-
-    @classmethod
-    def from_g_code_commands(cls, g_code_commands: list[GCodeCommand],
-                             working_radius: float):
-        # Assume for now that the set points are really close
-        trajectory = []
-        for i in range(1, len(g_code_commands)):
-            if g_code_commands[i].get_xy_radius() < working_radius:
-                trajectory.append(
-                    PrinitingSystemSetPoint(g_code_commands[i].position,
-                                            g_code_commands[i].speed, 0.0,
-                                            g_code_commands[i].speed))
-            else:
-                robotic_arm_target_position = np.array([
-                    g_code_commands[i].position[0], 0.0,
-                    g_code_commands[i].position[1]
-                ])
-                robotic_arm_speed = g_code_commands[i].speed * (
-                    g_code_commands[i].position[1] -
-                    g_code_commands[i - 1].position[1]
-                ) / np.linalg.norm(g_code_commands[i].position[:2] -
-                                   g_code_commands[i - 1].position[:2])
-                moving_platform_displacement = g_code_commands[i].position[1]
-
-                moving_platform_speed = g_code_commands[i].speed * (
-                    g_code_commands[i].position[0] -
-                    g_code_commands[i - 1].position[0]
-                ) / np.linalg.norm(g_code_commands[i].position[:2] -
-                                   g_code_commands[i - 1].position[:2])
-
-                trajectory.append(
-                    PrinitingSystemSetPoint(robotic_arm_target_position,
-                                            robotic_arm_speed,
-                                            moving_platform_displacement,
-                                            moving_platform_speed))
-
-
 def main():
     supervisor = Supervisor()
     time_step = int(4 * supervisor.getBasicTimeStep())
+    supervisor.step(time_step)
 
     robotic_arm = RoboticArm(supervisor, time_step)
-    moving_platform = MovingPlatform(supervisor, time_step)
+    platform = Platform(supervisor, time_step)
     # Starts with the intial positon of the robot
     g_code_commands = [
-        GCodeCommand(np.array([1.65, 0.0, 1.76]), 2.0),
-        GCodeCommand(np.array([1.65, -0.5, 1.76]), 10.0),
-        GCodeCommand(np.array([1.65, 1.0, 1.76]), 10.0),
-        GCodeCommand(np.array([1.65, -1.0, 1.76]), 10.0)
+        GCodeCommand(np.array([1.65, 0.0, 1.76]), 1.0),
+        GCodeCommand(np.array([1.65, 0.0, 0.1]), 1.0),
+        GCodeCommand(np.array([2.0, -1.0, 0.1]), 0.2),
+        GCodeCommand(np.array([1.4, 1.0, 0.1]), 0.2),
+        GCodeCommand(np.array([2.0, -1.0, 0.1]), 0.2)
     ]
-    toolpath = Toolpath.from_g_code_commands(g_code_commands, 5.0)
+    toolpath = Toolpath.from_g_code_commands(g_code_commands)
+
+    current_time = 0.0
     for set_point in toolpath:
         print(set_point)
+        robotic_arm_interpolator = robotic_arm.get_joint_angle_interpolator(
+            current_time, set_point.robotic_arm_position,
+            set_point.robotic_arm_duration)
+        platform_interpolator = platform.get_displacement_interpolator(
+            current_time, set_point.platform_displacement,
+            set_point.platform_duration)
+        while supervisor.step(time_step) != -1:
+            current_time += time_step / 1000.0
+            if not robotic_arm_interpolator.is_finished(
+                    current_time) or not platform_interpolator.is_finished(
+                        current_time):
+                robotic_arm_joint_angles = robotic_arm_interpolator(
+                    current_time)
+                platform_y_displacement = platform_interpolator(current_time)
+            else:
+                break
+            robotic_arm.set_joint_angles(robotic_arm_joint_angles)
+            platform.set_y_displacement(platform_y_displacement)
 
-    # current_time = 0.0
-    # for i in range(1, len(g_code_commands)):
-    #     duration = np.linalg.norm(
-    #         g_code_commands[i].position -
-    #         g_code_commands[i - 1].position) / g_code_commands[i].speed
-    #     target_position = g_code_commands[i].position
-
-    #     interpolator = robotic_arm.get_joint_angle_interpolator(
-    #         current_time, target_position, duration)
-    #     while supervisor.step(time_step) != -1:
-    #         current_time += time_step / 1000.0
-    #         moving_platform.get_translation()
-    #         moving_platform.set_y_displacement(
-    #             0.2 * np.sin(current_time * 2 * np.pi))
-    #         if not interpolator.is_finished(current_time):
-    #             joint_angles = interpolator.interpolate_joint_angles(
-    #                 current_time)
-    #         else:
-    #             break
-    #         robotic_arm.set_joint_angles(joint_angles)
-
-
-# TODO:
-# - [X] move the robotic arm in its own world
-# - [X] add the moving platform using a sliding joint
-# - [X] add the projection on the working envelope
-# - [ ] handle the case where the speed for the platform is 0.0
-# - [ ] handle the case where a set point is exactly on the working radius -> do not add a second set point
-# - [ ] normal movement until projected point!
-# - [ ] the robotic arm has to stay on the edge of the working envelope during movement of the platform!
-# - [ ] printing system set points still contain a duartion and not a speed
-# - [ ] keep track if the working radius is left and if so save it in a boolean variable
-# - [ ] swap the axis the paper 
-# - [ ] include orientation information
-# - [ ] implement the synchronization algorithm
-# - [ ] visualize the trajectory (optional)
 
 if __name__ == "__main__":
     main()

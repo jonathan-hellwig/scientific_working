@@ -1,6 +1,4 @@
-from sys import platform
 import numpy as np
-import unittest
 
 
 class GCodeCommand:
@@ -16,191 +14,67 @@ class GCodeCommand:
 class PrinitingSystemSetPoint:
 
     def __init__(self, robotic_arm_position: np.array,
-                 robotic_arm_duration: float,
-                 moving_platform_displacement: float,
-                 moving_platform_duration: float) -> None:
+                 robotic_arm_duration: float, platform_displacement: float,
+                 platform_duration: float) -> None:
         self.robotic_arm_position = robotic_arm_position
         self.robotic_arm_duration = robotic_arm_duration
-        self.moving_platform_position = moving_platform_displacement
-        self.moving_platform_duration = moving_platform_duration
+        self.platform_displacement = platform_displacement
+        self.platform_duration = platform_duration
 
     def __str__(self):
-        return f'PrinitingSystemSetPoint({self.robotic_arm_position},{self.robotic_arm_duration}, {self.moving_platform_position},{self.moving_platform_duration})'
-
-
-def project_to_working_envelope(first_point, second_point, working_radius):
-    scaling = (first_point[0] *
-               (first_point[0] - second_point[0]) + first_point[1] *
-               (first_point[1] - second_point[1]) + np.sqrt(
-                   (first_point[0] *
-                    (first_point[0] - second_point[0]) + first_point[1] *
-                    (first_point[1] - second_point[1]))**2 +
-                   ((first_point[0] - second_point[0])**2 +
-                    (first_point[1] - second_point[1])**2) *
-                   (working_radius**2 - first_point[0]**2 - first_point[1]**2))
-               ) / ((first_point[0] - second_point[0])**2 +
-                    (first_point[1] - second_point[1])**2)
-    return first_point + scaling * (second_point - first_point)
+        return f'PrinitingSystemSetPoint({self.robotic_arm_position},{self.robotic_arm_duration}, {self.platform_displacement},{self.platform_duration})'
 
 
 def calculate_printing_system_set_point(first_position, second_position,
-                                        speed, working_radius):
-    robotic_arm_target_position = np.array(
-        [second_position[0], 0.0, second_position[2]])
-    robotic_arm_speed = speed * (second_position[0] - first_position[0]
-                                 ) / np.linalg.norm(second_position[:2] -
-                                                    first_position[:2])
-    moving_platform_displacement = second_position[1]
+                                        speed):
+    if not np.array_equal(first_position, second_position) and speed != 0.0:
+        robotic_arm_target_position = np.array(
+            [second_position[0], 0.0, second_position[2]])
+        robotic_arm_speed = speed * np.sqrt(
+            ((second_position[0] - first_position[0])**2 +
+             (second_position[2] - first_position[2])**
+             2)) / np.linalg.norm(second_position - first_position)
 
-    moving_platform_speed = speed * (second_position[1] - first_position[1]
-                                     ) / np.linalg.norm(second_position[:2] -
-                                                        first_position[:2])
+        platform_displacement = -second_position[1]
 
-    return PrinitingSystemSetPoint(robotic_arm_target_position,
-                                   robotic_arm_speed,
-                                   moving_platform_displacement,
-                                   moving_platform_speed)
+        platform_speed = speed * (second_position[1] - first_position[1]
+                                  ) / np.linalg.norm(second_position -
+                                                     first_position)
+
+        if robotic_arm_speed != 0.0:
+            robotic_arm_duration = np.linalg.norm(
+                second_position - first_position) / np.abs(robotic_arm_speed)
+            if platform_speed != 0:
+                platform_duration = np.linalg.norm(
+                    second_position - first_position) / np.abs(platform_speed)
+            else:
+                platform_duration = robotic_arm_duration
+        else:
+            platform_duration = np.linalg.norm(
+                second_position - first_position) / np.abs(platform_speed)
+            robotic_arm_duration = platform_duration
+        duration = min(robotic_arm_duration, platform_duration)
+        return PrinitingSystemSetPoint(robotic_arm_target_position, duration,
+                                       platform_displacement, duration)
+    else:
+        quit()
 
 
 class Toolpath:
 
-    def __init__(self, trajectory) -> None:
+    def __init__(self, trajectory: list[PrinitingSystemSetPoint]) -> None:
         self.trajectory = trajectory
 
     @classmethod
-    def from_g_code_commands(cls, g_code_commands: list[GCodeCommand],
-                             working_radius: float):
-        platform_is_moving = False
+    def from_g_code_commands(cls, g_code_commands: list[GCodeCommand]):
         trajectory = []
         for i in range(1, len(g_code_commands)):
-            if g_code_commands[i].get_xy_radius() <= working_radius:
-                if platform_is_moving:
-                    platform_is_moving = False
-                    projected_point = project_to_working_envelope(
-                        g_code_commands[i].position,
-                        g_code_commands[i - 1].position, working_radius)
-                    first_set_point = calculate_printing_system_set_point(
-                        g_code_commands[i - 1].position, projected_point,
-                        g_code_commands[i].speed)
-                    second_set_point = PrinitingSystemSetPoint(
-                        projected_point, g_code_commands[i].speed, 0.0, 0.0)
-
-                    trajectory.append(first_set_point)
-                    trajectory.append(second_set_point)
-                else:
-                    trajectory.append(
-                        PrinitingSystemSetPoint(g_code_commands[i].position,
-                                                g_code_commands[i].speed, 0.0,
-                                                0.0))
-            else:
-                if not platform_is_moving:
-                    platform_is_moving = True
-                    projected_point = project_to_working_envelope(
-                        g_code_commands[i - 1].position,
-                        g_code_commands[i].position, working_radius)
-                    first_set_point = PrinitingSystemSetPoint(
-                        projected_point, g_code_commands[i].speed, 0.0, 0.0)
-                    second_set_point = calculate_printing_system_set_point(
-                        projected_point, g_code_commands[i].position,
-                        g_code_commands[i].speed)
-
-                    trajectory.append(first_set_point)
-                    trajectory.append(second_set_point)
-                else:
-                    set_point = calculate_printing_system_set_point(
-                        g_code_commands[i - 1].position,
-                        g_code_commands[i].position, g_code_commands[i].speed)
-
-                    trajectory.append(set_point)
+            set_point = calculate_printing_system_set_point(
+                g_code_commands[i - 1].position, g_code_commands[i].position,
+                g_code_commands[i].speed)
+            trajectory.append(set_point)
 
         return cls(trajectory)
 
     def __getitem__(self, index):
         return self.trajectory[index]
-
-
-class TestToolpath(unittest.TestCase):
-
-    def test_toolpath_creation(self):
-        working_radius = 4.0
-        g_code_commands = [
-            GCodeCommand(np.array([0.0, 0.0, 0.0]), 1.0),
-            GCodeCommand(np.array([0.0, 1.0, 0.0]), 2.0),
-            GCodeCommand(np.array([0.0, 2.0, 0.0]), 3.0),
-            GCodeCommand(np.array([0.0, 3.0, 0.0]), 4.0),
-            GCodeCommand(np.array([0.0, 3.5, 0.0]), 5.0),
-            GCodeCommand(np.array([0.0, 5.0, 0.0]), 6.0),
-            GCodeCommand(np.array([0.0, 6.0, 0.0]), 7.0),
-            GCodeCommand(np.array([0.0, 3.0, 0.0]), 6.0),
-        ]
-
-        toolpath = Toolpath.from_g_code_commands(g_code_commands,
-                                                 working_radius)
-        for set_point in toolpath:
-            print(set_point)
-
-
-class TestProjection(unittest.TestCase):
-
-    def test_project_to_working_envelope_one(self):
-        first_point = np.array([0.0, 0.5])
-        second_point = np.array([0.0, 1.5])
-        expected_projection = np.array([0.0, 1.0])
-        working_radius = 1.0
-        self.assertTrue(
-            np.allclose(
-                project_to_working_envelope(first_point, second_point,
-                                            working_radius),
-                expected_projection))
-
-    def test_project_to_working_envelope_two(self):
-        first_point = np.array([0.0, 0.25])
-        second_point = np.array([0.0, 2.0])
-        expected_projection = np.array([0.0, 1.0])
-        working_radius = 1.0
-        self.assertTrue(
-            np.allclose(
-                project_to_working_envelope(first_point, second_point,
-                                            working_radius),
-                expected_projection))
-
-    def test_project_to_working_envelope_three(self):
-        first_point = np.array([0.5, 0.0])
-        second_point = np.array([1.5, 0.0])
-        expected_projection = np.array([1.0, 0.0])
-        working_radius = 1.0
-        self.assertTrue(
-            np.allclose(
-                project_to_working_envelope(first_point, second_point,
-                                            working_radius),
-                expected_projection))
-
-    def test_project_to_working_envelope_four(self):
-        first_point = np.array([0.5, 0.5])
-        second_point = np.array([1.5, 1.5])
-        expected_projection = np.array([1.0 / np.sqrt(2), 1.0 / np.sqrt(2)])
-        working_radius = 1.0
-        self.assertTrue(
-            np.allclose(
-                project_to_working_envelope(first_point, second_point,
-                                            working_radius),
-                expected_projection))
-
-
-def main():
-
-    # g_code_commands = [
-    #     GCodeCommand(np.array([1.65, 0.0, 1.76]), 2.0),
-    #     GCodeCommand(np.array([1.65, -0.5, 1.76]), 10.0),
-    #     GCodeCommand(np.array([1.65, 1.0, 1.76]), 10.0),
-    #     GCodeCommand(np.array([1.65, -1.0, 1.76]), 10.0)
-    # ]
-    # toolpath = Toolpath.from_g_code_commands(g_code_commands, 5.0)
-    # for set_point in toolpath:
-    #     print(set_point)
-    test = TestToolpath()
-    test.test_toolpath_creation()
-
-
-if __name__ == "__main__":
-    main()

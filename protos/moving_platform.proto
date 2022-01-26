@@ -13,13 +13,7 @@ PROTO moving_platform [
       jointParameters JointParameters {
         axis 0 1 0
       }
-      device [
-        LinearMotor {
-          name "sliding_joint"
-          minPosition -10.0
-          maxPosition 10.0
-        }
-      ]
+      
       endPoint Solid {
         translation 0 0 0.0
         rotation 0 0 0 0
