@@ -1,0 +1,6 @@
+ikpy==3.2.2
+mpmath==1.2.1
+numpy==1.22.1
+scipy==1.7.3
+sympy==1.9
+yapf==0.32.0
