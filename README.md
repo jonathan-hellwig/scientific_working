@@ -1,5 +1,5 @@
 # Scientific Working in Computational Engineering
-In this repository, I have the code for the Scientific Working in Computational Engineering Course at the [Institute of Digital and Autonomous Construction](https://www.tuhh.de/idac/research.html). The task for this project was to create a digital twin of a robotic arm and moving platform system that coordinates the movement in the context of a cement printing. As a simulation environment, I chose the [WeBots](https://www.cyberbotics.com/) simulator and implemented a simple controler that maximizes the potential printing area.
+In this repository, I maintain the code for the Scientific Working in Computational Engineering Course at the [Institute of Digital and Autonomous Construction](https://www.tuhh.de/idac/research.html). The task for this project was to create a digital twin of a robotic arm and moving platform system that coordinates the movement in the context of a cement printing. As a simulation environment, I chose the [WeBots](https://www.cyberbotics.com/) simulator and implemented a simple controler that maximizes the potential printing area.
 
 ## How to run
 
